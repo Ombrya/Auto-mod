@@ -6,6 +6,10 @@ window.MGAutomationBootstrap = (() => {
 
     clearInterval(timer);
 
+	if (window.MGCatalog) {
+	  await window.MGCatalog.load();
+	}
+
     window.MGUI.createPanel();
 
     if (window.MGCore.enabled) {

@@ -150,7 +150,23 @@ window.MGUI = (() => {
         const label = document.createElement("div");
         label.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
         label.title = window.MGCore.getItemKey(item);
-        label.textContent = window.MGCore.getItemLabel(item);
+        const sprite = window.MGCatalog?.getSprite?.(item);
+		const rarity = window.MGCatalog?.getRarity?.(item);
+		const price = window.MGCatalog?.getPrice?.(item);
+		const name = window.MGCore.getItemLabel(item);
+
+		label.innerHTML = `
+		<div style="display:flex;align-items:center;gap:6px;min-width:0;">
+			${sprite ? `<img src="${sprite}" style="width:22px;height:22px;border-radius:5px;object-fit:contain;">` : ""}
+			<div style="min-width:0;">
+			<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
+			<div style="opacity:.65;font-size:10px;">
+				${price ? `${price.toLocaleString("en-US")} coins` : ""}
+				${rarity ? ` · ${rarity}` : ""}
+			</div>
+			</div>
+		</div>
+		`;
 
         const itemKey = window.MGCore.getItemKey(item);
         const forcedOn = window.MGCore.itemEnabled[itemKey] === true;

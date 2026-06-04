@@ -73,9 +73,8 @@ window.MGCore = (() => {
     },
 
     getItemLabel(item) {
-      const id = this.getItemId(item);
-      return id || "unknown";
-    },
+	  return window.MGCatalog?.getLabel?.(item) ?? this.getItemId(item) ?? "unknown";
+	},
 
     isTypeEnabled(type) {
       return this.typeEnabled[type] === true;
@@ -177,7 +176,13 @@ window.MGCore = (() => {
       }
 
       for (const type of Object.keys(grouped)) {
-        grouped[type].sort((a, b) => this.getItemLabel(a).localeCompare(this.getItemLabel(b)));
+        grouped[type].sort((a, b) => {
+		  const pa = window.MGCatalog?.getPrice?.(a) ?? 0;
+		  const pb = window.MGCatalog?.getPrice?.(b) ?? 0;
+		  if (pa !== pb) return pa - pb;
+
+		  return this.getItemLabel(a).localeCompare(this.getItemLabel(b));
+		});
       }
 
       return grouped;
