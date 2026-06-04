@@ -12,11 +12,16 @@ window.MGCatalog = (() => {
     decors: {}
   };
 
-  async function fetchJson(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
-    return res.json();
+async function fetchJson(url) {
+  if (window.MGLoaderRequest) {
+    const raw = await window.MGLoaderRequest(url);
+    return JSON.parse(raw);
   }
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  return res.json();
+}
 
   async function load() {
     if (state.loaded) return state;
