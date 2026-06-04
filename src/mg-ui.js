@@ -10,7 +10,7 @@ window.MGUI = (() => {
       top: 120px;
       right: 20px;
       z-index: 999999;
-      width: 220px;
+      width: 260px;
       padding: 10px;
       border-radius: 12px;
       background: rgba(22, 27, 34, 0.94);
@@ -37,9 +37,15 @@ window.MGUI = (() => {
         Toggle
       </button>
 
-      <button id="mg-auto-run" style="width:100%;padding:6px;border-radius:8px;cursor:pointer;">
+      <button id="mg-auto-run" style="width:100%;margin-bottom:6px;padding:6px;border-radius:8px;cursor:pointer;">
         Run once now
       </button>
+
+      <button id="mg-auto-settings-toggle" style="width:100%;padding:6px;border-radius:8px;cursor:pointer;">
+        Settings
+      </button>
+
+      <div id="mg-auto-settings" style="display:none;margin-top:10px;max-height:360px;overflow:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:8px;"></div>
     `;
 
     document.body.appendChild(panel);
@@ -51,6 +57,12 @@ window.MGUI = (() => {
 
     document.getElementById("mg-auto-run").onclick = async () => {
       await window.MGCore.buyAllAvailable(true);
+    };
+
+    document.getElementById("mg-auto-settings-toggle").onclick = async () => {
+      const box = document.getElementById("mg-auto-settings");
+      box.style.display = box.style.display === "none" ? "block" : "none";
+      if (box.style.display === "block") await renderSettings();
     };
 
     document.getElementById("mg-auto-hide").onclick = () => {
@@ -66,6 +78,106 @@ window.MGUI = (() => {
     }
 
     updatePanel();
+  }
+
+  function makeButton(text, active) {
+    const btn = document.createElement("button");
+    btn.textContent = text;
+    btn.style.cssText = `
+      padding: 3px 7px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.15);
+      cursor: pointer;
+      color: white;
+      background: ${active ? "#1f8f4d" : "#6b2f2f"};
+      font-size: 11px;
+      min-width: 42px;
+    `;
+    return btn;
+  }
+
+  async function renderSettings() {
+    const box = document.getElementById("mg-auto-settings");
+    if (!box || !window.MGCore) return;
+
+    box.innerHTML = "Loading settings...";
+
+    const grouped = await window.MGCore.getAllShopItemsGrouped();
+
+    const knownTypes = ["Seed", "Egg", "Tool", "Decor"];
+    const allTypes = Array.from(new Set([...knownTypes, ...Object.keys(grouped)]));
+
+    box.innerHTML = "";
+
+    const help = document.createElement("div");
+    help.textContent = "Type ON = buy all items of this type. If type OFF, only enabled items are bought.";
+    help.style.cssText = "opacity:.75;margin-bottom:8px;font-size:11px;line-height:1.25;";
+    box.appendChild(help);
+
+    for (const type of allTypes) {
+      const typeWrap = document.createElement("div");
+      typeWrap.style.cssText = "margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.1);";
+
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;";
+
+      const title = document.createElement("strong");
+      title.textContent = type;
+
+      const typeOn = window.MGCore.isTypeEnabled(type);
+      const typeBtn = makeButton(typeOn ? "ON" : "OFF", typeOn);
+
+      typeBtn.onclick = () => {
+        window.MGCore.setTypeEnabled(type, !window.MGCore.isTypeEnabled(type));
+      };
+
+      header.append(title, typeBtn);
+      typeWrap.appendChild(header);
+
+      const items = grouped[type] ?? [];
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No visible item in current shops.";
+        empty.style.cssText = "opacity:.55;font-size:11px;";
+        typeWrap.appendChild(empty);
+      }
+
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0;";
+
+        const label = document.createElement("div");
+        label.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        label.title = window.MGCore.getItemKey(item);
+        label.textContent = window.MGCore.getItemLabel(item);
+
+        const itemKey = window.MGCore.getItemKey(item);
+        const forcedOn = window.MGCore.itemEnabled[itemKey] === true;
+        const typeEnabled = window.MGCore.isTypeEnabled(type);
+
+        const itemBtn = makeButton(forcedOn ? "ON" : "OFF", forcedOn || typeEnabled);
+        itemBtn.textContent = typeEnabled ? "AUTO" : (forcedOn ? "ON" : "OFF");
+        itemBtn.title = typeEnabled
+          ? "Type is ON, this item will be bought automatically."
+          : "Toggle this individual item.";
+
+        itemBtn.onclick = () => {
+          if (window.MGCore.isTypeEnabled(type)) return;
+          window.MGCore.setItemEnabled(item, !window.MGCore.itemEnabled[itemKey]);
+        };
+
+        if (typeEnabled) {
+          itemBtn.style.opacity = ".75";
+          itemBtn.style.cursor = "not-allowed";
+        }
+
+        row.append(label, itemBtn);
+        typeWrap.appendChild(row);
+      }
+
+      box.appendChild(typeWrap);
+    }
   }
 
   function makeDraggable(panel) {
@@ -123,5 +235,5 @@ window.MGUI = (() => {
     btn.style.color = "white";
   }
 
-  return { createPanel, updatePanel };
+  return { createPanel, updatePanel, renderSettings };
 })();

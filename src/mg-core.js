@@ -1,5 +1,22 @@
 window.MGCore = (() => {
   const LS_ENABLED = "mgAutomation.enabled";
+  const LS_TYPE_ENABLED = "mgAutomation.typeEnabled";
+  const LS_ITEM_ENABLED = "mgAutomation.itemEnabled";
+
+  const ITEM_TYPES = ["Seed", "Egg", "Tool", "Decor"];
+
+  function readJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
 
   const core = {
     enabled: localStorage.getItem(LS_ENABLED) === "true",
@@ -12,6 +29,16 @@ window.MGCore = (() => {
     restockDelayMinMs: 10000,
     restockDelayMaxMs: 15000,
 
+    typeEnabled: {
+      Seed: true,
+      Egg: true,
+      Tool: false,
+      Decor: false,
+      ...readJson(LS_TYPE_ENABLED, {})
+    },
+
+    itemEnabled: readJson(LS_ITEM_ENABLED, {}),
+
     setStatus(text) {
       const el = document.getElementById("mg-auto-status");
       if (el) el.textContent = text;
@@ -20,6 +47,60 @@ window.MGCore = (() => {
 
     saveEnabled() {
       localStorage.setItem(LS_ENABLED, this.enabled ? "true" : "false");
+    },
+
+    saveSettings() {
+      writeJson(LS_TYPE_ENABLED, this.typeEnabled);
+      writeJson(LS_ITEM_ENABLED, this.itemEnabled);
+    },
+
+    getItemType(item) {
+      return String(item?.itemType ?? "Unknown");
+    },
+
+    getItemId(item) {
+      if (item?.itemType === "Seed") return item.species ?? item.name ?? "";
+      if (item?.itemType === "Egg") return item.eggId ?? item.id ?? "";
+      if (item?.itemType === "Tool") return item.toolId ?? item.id ?? "";
+      if (item?.itemType === "Decor") return item.decorId ?? item.id ?? "";
+      return item?.id ?? item?.species ?? item?.name ?? "";
+    },
+
+    getItemKey(item) {
+      const type = this.getItemType(item);
+      const id = this.getItemId(item);
+      return `${type}:${id}`;
+    },
+
+    getItemLabel(item) {
+      const id = this.getItemId(item);
+      return id || "unknown";
+    },
+
+    isTypeEnabled(type) {
+      return this.typeEnabled[type] === true;
+    },
+
+    setTypeEnabled(type, enabled) {
+      this.typeEnabled[type] = !!enabled;
+      this.saveSettings();
+      window.MGUI?.renderSettings?.();
+    },
+
+    isItemEnabled(item) {
+      const type = this.getItemType(item);
+      const key = this.getItemKey(item);
+
+      if (this.isTypeEnabled(type)) return true;
+
+      return this.itemEnabled[key] === true;
+    },
+
+    setItemEnabled(item, enabled) {
+      const key = this.getItemKey(item);
+      this.itemEnabled[key] = !!enabled;
+      this.saveSettings();
+      window.MGUI?.renderSettings?.();
     },
 
     randomRestockDelay() {
@@ -62,7 +143,44 @@ window.MGCore = (() => {
         if (eggId) return { itemType: "Egg", eggId };
       }
 
+      if (item?.itemType === "Tool") {
+        const toolId = item.toolId ?? item.id;
+        if (toolId) return { itemType: "Tool", toolId };
+      }
+
+      if (item?.itemType === "Decor") {
+        const decorId = item.decorId ?? item.id;
+        if (decorId) return { itemType: "Decor", decorId };
+      }
+
       return null;
+    },
+
+    async getAllShopItemsGrouped() {
+      const shops = await QWS_Atoms.shop.shops.get();
+      const grouped = {};
+      const seen = new Set();
+
+      for (const [shopKey, shop] of Object.entries(shops ?? {})) {
+        for (const item of shop?.inventory ?? []) {
+          const type = this.getItemType(item);
+          const id = this.getItemId(item);
+          if (!type || !id) continue;
+
+          const key = `${type}:${id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          if (!grouped[type]) grouped[type] = [];
+          grouped[type].push({ ...item, __shopKey: shopKey });
+        }
+      }
+
+      for (const type of Object.keys(grouped)) {
+        grouped[type].sort((a, b) => this.getItemLabel(a).localeCompare(this.getItemLabel(b)));
+      }
+
+      return grouped;
     },
 
     async autoStoreOneSeedIfPossible(species) {
@@ -88,13 +206,17 @@ window.MGCore = (() => {
       for (const item of items) {
         if (!this.enabled && label !== "manual") break;
 
+        if (!this.isItemEnabled(item)) {
+          continue;
+        }
+
         const stock = this.getStock(item);
         if (stock <= 0) continue;
 
         const payload = this.itemPayload(item);
         if (!payload) continue;
 
-        const itemLabel = payload.species ?? payload.eggId ?? "unknown";
+        const itemLabel = this.getItemLabel(item);
         this.setStatus(`Buying ${stock}x ${label}: ${itemLabel}`);
 
         for (let i = 0; i < stock; i++) {
@@ -118,9 +240,12 @@ window.MGCore = (() => {
       try {
         this.setStatus(manual ? "Manual run..." : "Buying stock...");
 
-        await this.buyShopInventory("seed", manual ? "manual" : "seed");
-        await this.buyShopInventory("egg", manual ? "manual" : "egg");
-        await this.buyShopInventory("dawn", manual ? "manual" : "dawn");
+        const shops = await QWS_Atoms.shop.shops.get();
+        const shopKeys = Object.keys(shops ?? {});
+
+        for (const shopKey of shopKeys) {
+          await this.buyShopInventory(shopKey, manual ? "manual" : shopKey);
+        }
 
         this.setStatus(this.enabled ? "ON, waiting restock" : "OFF");
       } finally {
@@ -132,6 +257,7 @@ window.MGCore = (() => {
       if (!this.enabled) return;
 
       const prev = this.prev;
+
       const seedRestocked =
         prev &&
         (prev.seed?.secondsUntilRestock ?? 0) <
