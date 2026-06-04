@@ -10,7 +10,7 @@ window.MGUI = (() => {
       top: 120px;
       right: 20px;
       z-index: 999999;
-      width: 260px;
+      width: 280px;
       padding: 10px;
       border-radius: 12px;
       background: rgba(22, 27, 34, 0.94);
@@ -45,7 +45,7 @@ window.MGUI = (() => {
         Settings
       </button>
 
-      <div id="mg-auto-settings" style="display:none;margin-top:10px;max-height:360px;overflow:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:8px;"></div>
+      <div id="mg-auto-settings" style="display:none;margin-top:10px;max-height:420px;overflow:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:8px;"></div>
     `;
 
     document.body.appendChild(panel);
@@ -82,6 +82,7 @@ window.MGUI = (() => {
 
   function makeButton(text, active) {
     const btn = document.createElement("button");
+
     btn.textContent = text;
     btn.style.cssText = `
       padding: 3px 7px;
@@ -93,7 +94,40 @@ window.MGUI = (() => {
       font-size: 11px;
       min-width: 42px;
     `;
+
     return btn;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  async function loadSpriteIntoImage(img, spriteUrl) {
+    if (!img || !spriteUrl || !window.MGLoaderRequestDataUrl) {
+      if (img) img.style.display = "none";
+      return;
+    }
+
+    const cacheKey = `mgAutomation.sprite.${spriteUrl}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      img.src = cached;
+      return;
+    }
+
+    try {
+      const dataUrl = await window.MGLoaderRequestDataUrl(spriteUrl);
+      localStorage.setItem(cacheKey, dataUrl);
+      img.src = dataUrl;
+    } catch {
+      img.style.display = "none";
+    }
   }
 
   async function renderSettings() {
@@ -145,34 +179,44 @@ window.MGUI = (() => {
 
       for (const item of items) {
         const row = document.createElement("div");
-        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0;";
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;";
 
         const label = document.createElement("div");
-        label.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        label.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;";
         label.title = window.MGCore.getItemKey(item);
-        const sprite = window.MGCatalog?.getSprite?.(item);
-		const rarity = window.MGCatalog?.getRarity?.(item);
-		const price = window.MGCatalog?.getPrice?.(item);
-		const name = window.MGCore.getItemLabel(item);
 
-		label.innerHTML = `
-		<div style="display:flex;align-items:center;gap:6px;min-width:0;">
-			${sprite ? `<img src="${sprite}" style="width:22px;height:22px;border-radius:5px;object-fit:contain;">` : ""}
-			<div style="min-width:0;">
-			<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
-			<div style="opacity:.65;font-size:10px;">
-				${price ? `${price.toLocaleString("en-US")} coins` : ""}
-				${rarity ? ` · ${rarity}` : ""}
-			</div>
-			</div>
-		</div>
-		`;
+        const sprite = window.MGCatalog?.getSprite?.(item);
+        const rarity = window.MGCatalog?.getRarity?.(item);
+        const price = window.MGCatalog?.getPrice?.(item);
+        const name = window.MGCore.getItemLabel(item);
+
+        label.innerHTML = `
+          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+            <img
+              data-mg-sprite="${escapeHtml(sprite || "")}"
+              style="width:24px;height:24px;border-radius:5px;object-fit:contain;background:rgba(255,255,255,.08);flex:0 0 auto;"
+            >
+            <div style="min-width:0;">
+              <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                ${escapeHtml(name)}
+              </div>
+              <div style="opacity:.65;font-size:10px;">
+                ${price ? `${Number(price).toLocaleString("en-US")} coins` : ""}
+                ${rarity ? ` · ${escapeHtml(rarity)}` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+
+        const img = label.querySelector("img[data-mg-sprite]");
+        loadSpriteIntoImage(img, sprite);
 
         const itemKey = window.MGCore.getItemKey(item);
         const forcedOn = window.MGCore.itemEnabled[itemKey] === true;
         const typeEnabled = window.MGCore.isTypeEnabled(type);
 
         const itemBtn = makeButton(forcedOn ? "ON" : "OFF", forcedOn || typeEnabled);
+
         itemBtn.textContent = typeEnabled ? "AUTO" : (forcedOn ? "ON" : "OFF");
         itemBtn.title = typeEnabled
           ? "Type is ON, this item will be bought automatically."
@@ -205,6 +249,7 @@ window.MGUI = (() => {
       if (e.target.tagName === "BUTTON") return;
 
       dragging = true;
+
       const rect = panel.getBoundingClientRect();
 
       offsetX = e.clientX - rect.left;
@@ -221,6 +266,7 @@ window.MGUI = (() => {
 
     document.addEventListener("mouseup", () => {
       if (!dragging) return;
+
       dragging = false;
 
       localStorage.setItem("mgAutomation.panelX", panel.style.left);
