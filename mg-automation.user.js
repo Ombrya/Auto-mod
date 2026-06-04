@@ -9,12 +9,12 @@
 // @match        https://starweaver.org/r/*
 // @run-at       document-start
 // @grant        none
-// @require      https://raw.githubusercontent.com/TON_USER/TON_REPO/main/src/mg-utils.js
-// @require      https://raw.githubusercontent.com/TON_USER/TON_REPO/main/src/mg-core.js
-// @require      https://raw.githubusercontent.com/TON_USER/TON_REPO/main/src/mg-ui.js
+// @require      https://raw.githubusercontent.com/Ombrya/Auto-mod/main/src/mg-utils.js
+// @require      https://raw.githubusercontent.com/Ombrya/Auto-mod/main/src/mg-core.js
+// @require      https://raw.githubusercontent.com/Ombrya/Auto-mod/main/src/mg-ui.js
+// @require      https://raw.githubusercontent.com/Ombrya/Auto-mod/main/src/mg-bootstrap.js
 // ==/UserScript==
 
 (function () {
   'use strict';
-  window.MGAutomationBootstrap?.();
 })();
