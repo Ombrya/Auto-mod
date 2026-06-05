@@ -2,13 +2,23 @@ window.MGAutomationBootstrap = (() => {
   console.log("[MG Automation] Loaded");
 
   const timer = setInterval(async () => {
-    if (!window.QWS_Atoms || !window.MGCore || !window.MGUI) return;
+    if (
+      !window.QWS_Atoms ||
+      !window.MGUtils ||
+      !window.MGCatalog ||
+      !window.MGCore ||
+      !window.MGUI
+    ) {
+      return;
+    }
 
     clearInterval(timer);
 
-	if (window.MGCatalog) {
-	  await window.MGCatalog.load();
-	}
+    try {
+      await window.MGCatalog.load();
+    } catch (err) {
+      console.warn("[MG Automation] Catalog load failed", err);
+    }
 
     window.MGUI.createPanel();
 
