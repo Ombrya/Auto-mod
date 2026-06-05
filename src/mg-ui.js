@@ -170,20 +170,22 @@ window.MGUI = (() => {
 
       win.style.cssText = `
         position: fixed;
-        top: 90px;
-        left: 90px;
-        z-index: 999998;
-        width: 620px;
-        max-height: 78vh;
-        padding: 12px;
-        border-radius: 14px;
-        background: rgba(17, 21, 27, 0.97);
-        color: #e7eef7;
-        font-family: system-ui, sans-serif;
-        font-size: 12px;
-        box-shadow: 0 14px 40px rgba(0,0,0,.45);
-        border: 1px solid rgba(255,255,255,.13);
-        user-select: none;
+		top: 90px;
+		left: 90px;
+		z-index: 999998;
+		width: 620px;
+		height: 78vh;
+		padding: 12px;
+		border-radius: 14px;
+		background: rgba(17, 21, 27, 0.97);
+		color: #e7eef7;
+		font-family: system-ui, sans-serif;
+		font-size: 12px;
+		box-shadow: 0 14px 40px rgba(0,0,0,.45);
+		border: 1px solid rgba(255,255,255,.13);
+		user-select: none;
+		display: flex;
+		flex-direction: column;
       `;
 
       win.innerHTML = `
@@ -197,7 +199,17 @@ window.MGUI = (() => {
 
         <div id="mg-auto-global-settings" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03);"></div>
 
-        <div id="mg-auto-settings-content"></div>
+        <div
+			id="mg-auto-settings-content"
+			style="
+				flex:1;
+				overflow-y:auto;
+				overflow-x:hidden;
+				min-height:0;
+				padding-right:4px;
+				scrollbar-width:thin;
+			"
+		></div>
       `;
 
       document.body.appendChild(win);
