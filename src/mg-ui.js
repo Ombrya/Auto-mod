@@ -15,15 +15,6 @@ window.MGUI = (() => {
     localStorage.setItem(key, JSON.stringify(value));
   }
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
   function makeSwitch(active) {
     const btn = document.createElement("button");
     btn.className = "mg-auto-switch";
@@ -54,13 +45,6 @@ window.MGUI = (() => {
 
     btn.appendChild(dot);
     return btn;
-  }
-
-  function setSwitchState(btn, active) {
-    btn.dataset.active = active ? "true" : "false";
-    btn.style.background = active ? "#4f6df5" : "#2d333b";
-    const dot = btn.querySelector("span");
-    if (dot) dot.style.left = active ? "22px" : "2px";
   }
 
   async function loadSpriteIntoImage(img, spriteUrl) {
@@ -170,26 +154,28 @@ window.MGUI = (() => {
 
       win.style.cssText = `
         position: fixed;
-		top: 90px;
-		left: 90px;
-		z-index: 999998;
-		width: 620px;
-		height: 78vh;
-		padding: 12px;
-		border-radius: 14px;
-		background: rgba(17, 21, 27, 0.97);
-		color: #e7eef7;
-		font-family: system-ui, sans-serif;
-		font-size: 12px;
-		box-shadow: 0 14px 40px rgba(0,0,0,.45);
-		border: 1px solid rgba(255,255,255,.13);
-		user-select: none;
-		display: flex;
-		flex-direction: column;
+        top: 90px;
+        left: 90px;
+        z-index: 999998;
+        width: 620px;
+        height: 78vh;
+        max-height: 78vh;
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(17, 21, 27, 0.97);
+        color: #e7eef7;
+        font-family: system-ui, sans-serif;
+        font-size: 12px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.45);
+        border: 1px solid rgba(255,255,255,.13);
+        user-select: none;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       `;
 
       win.innerHTML = `
-        <div id="mg-auto-settings-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:move;">
+        <div id="mg-auto-settings-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:move;flex:0 0 auto;">
           <div>
             <strong style="font-size:14px;">⚙️ Auto-buy settings</strong>
             <div style="opacity:.65;font-size:11px;">Choose what should be bought automatically.</div>
@@ -197,19 +183,19 @@ window.MGUI = (() => {
           <button id="mg-auto-settings-close" style="cursor:pointer;">×</button>
         </div>
 
-        <div id="mg-auto-global-settings" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03);"></div>
+        <div id="mg-auto-global-settings" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03);flex:0 0 auto;"></div>
 
         <div
-			id="mg-auto-settings-content"
-			style="
-				flex:1;
-				overflow-y:auto;
-				overflow-x:hidden;
-				min-height:0;
-				padding-right:4px;
-				scrollbar-width:thin;
-			"
-		></div>
+          id="mg-auto-settings-content"
+          style="
+            flex:1;
+            min-height:0;
+            overflow-y:auto;
+            overflow-x:hidden;
+            padding-right:6px;
+            scrollbar-width:thin;
+          "
+        ></div>
       `;
 
       document.body.appendChild(win);
@@ -229,7 +215,7 @@ window.MGUI = (() => {
       restorePosition(win, "mgAutomation.settingsX", "mgAutomation.settingsY");
     }
 
-    win.style.display = "block";
+    win.style.display = "flex";
     await renderSettings();
   }
 
@@ -256,6 +242,10 @@ window.MGUI = (() => {
       opacity:.8;
       font-weight:700;
       border-bottom:1px solid rgba(255,255,255,.12);
+      position: sticky;
+      top: 0;
+      background: rgba(17, 21, 27, 0.98);
+      z-index: 1;
     `;
 
     tableHead.innerHTML = `
@@ -473,7 +463,32 @@ window.MGUI = (() => {
       panel.style.right = "auto";
     }
 
-    if (savedY) panel.style.top = savedY;
+    if (savedY) {
+      panel.style.top = savedY;
+    }
+
+    requestAnimationFrame(() => {
+      const rect = panel.getBoundingClientRect();
+      const margin = 12;
+
+      let left = rect.left;
+      let top = rect.top;
+
+      if (rect.right < margin) left = margin;
+      if (rect.bottom < margin) top = margin;
+      if (rect.left > window.innerWidth - margin) left = window.innerWidth - rect.width - margin;
+      if (rect.top > window.innerHeight - margin) top = window.innerHeight - rect.height - margin;
+
+      if (top < margin) top = margin;
+      if (left < margin) left = margin;
+
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+      panel.style.right = "auto";
+
+      localStorage.setItem(xKey, panel.style.left);
+      localStorage.setItem(yKey, panel.style.top);
+    });
   }
 
   function updatePanel() {
