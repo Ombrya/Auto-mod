@@ -2,12 +2,11 @@ window.MGCatalog = (() => {
   const API_BASE = "https://mg-api.ariedam.fr/data";
   const LS_KEY = "mgAutomation.catalog.cache";
   const LS_TS = "mgAutomation.catalog.cacheTs";
-  const SPRITE_PREFIX = "mgAutomation.sprite.";
   const CACHE_MS = 12 * 60 * 60 * 1000;
 
   const state = {
     loaded: false,
-    groupedCache: null,
+    grouped: null,
     plants: {},
     eggs: {},
     items: {},
@@ -25,65 +24,70 @@ window.MGCatalog = (() => {
     return res.json();
   }
 
-  async function load() {
-    if (state.loaded) return state;
+  async function load(force = false) {
+    if (state.loaded && !force) return state;
 
     const now = Date.now();
     const cached = localStorage.getItem(LS_KEY);
     const cachedTs = Number(localStorage.getItem(LS_TS) || 0);
 
-    if (cached && now - cachedTs < CACHE_MS) {
+    if (!force && cached && now - cachedTs < CACHE_MS) {
       try {
-        Object.assign(state, JSON.parse(cached), { loaded: true });
-        buildGroupedCache();
+        const parsed = JSON.parse(cached);
+        Object.assign(state, parsed, { loaded: true });
+        buildGrouped();
         console.log("[MG Catalog] Loaded from cache");
         return state;
       } catch {}
     }
 
-    try {
-      const [plants, eggs, items, decors] = await Promise.all([
-        fetchJson(`${API_BASE}/plants`),
-        fetchJson(`${API_BASE}/eggs`),
-        fetchJson(`${API_BASE}/items`),
-        fetchJson(`${API_BASE}/decors`)
-      ]);
+    const [plants, eggs, items, decors] = await Promise.all([
+      fetchJson(`${API_BASE}/plants`),
+      fetchJson(`${API_BASE}/eggs`),
+      fetchJson(`${API_BASE}/items`),
+      fetchJson(`${API_BASE}/decors`)
+    ]);
 
-      Object.assign(state, {
-        loaded: true,
-        plants: plants ?? {},
-        eggs: eggs ?? {},
-        items: items ?? {},
-        decors: decors ?? {}
-      });
+    Object.assign(state, {
+      loaded: true,
+      plants: plants ?? {},
+      eggs: eggs ?? {},
+      items: items ?? {},
+      decors: decors ?? {}
+    });
 
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        plants: state.plants,
-        eggs: state.eggs,
-        items: state.items,
-        decors: state.decors
-      }));
-      localStorage.setItem(LS_TS, String(now));
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      plants: state.plants,
+      eggs: state.eggs,
+      items: state.items,
+      decors: state.decors
+    }));
 
-      buildGroupedCache();
+    localStorage.setItem(LS_TS, String(now));
 
-      console.log("[MG Catalog] Loaded from API");
-    } catch (err) {
-      console.warn("[MG Catalog] API failed", err);
+    buildGrouped();
 
-      if (cached) {
-        try {
-          Object.assign(state, JSON.parse(cached), { loaded: true });
-          buildGroupedCache();
-          console.log("[MG Catalog] Fallback to old cache");
-        } catch {}
-      }
-    }
-
+    console.log("[MG Catalog] Loaded from API");
     return state;
   }
 
-  function buildGroupedCache() {
+  function makeItem(type, id, meta) {
+    const item = {
+      itemType: type,
+      id,
+      __catalog: true,
+      __meta: meta ?? {}
+    };
+
+    if (type === "Seed") item.species = id;
+    if (type === "Egg") item.eggId = id;
+    if (type === "Tool") item.toolId = id;
+    if (type === "Decor") item.decorId = id;
+
+    return item;
+  }
+
+  function buildGrouped() {
     const grouped = {
       Seed: [],
       Egg: [],
@@ -91,22 +95,21 @@ window.MGCatalog = (() => {
       Decor: []
     };
 
-    for (const species of Object.keys(state.plants ?? {})) {
-      if (state.plants[species]?.seed) {
-        grouped.Seed.push({ itemType: "Seed", species, __catalog: true });
-      }
+    for (const [species, data] of Object.entries(state.plants ?? {})) {
+      if (!data?.seed) continue;
+      grouped.Seed.push(makeItem("Seed", species, data.seed));
     }
 
-    for (const eggId of Object.keys(state.eggs ?? {})) {
-      grouped.Egg.push({ itemType: "Egg", eggId, id: eggId, __catalog: true });
+    for (const [eggId, meta] of Object.entries(state.eggs ?? {})) {
+      grouped.Egg.push(makeItem("Egg", eggId, meta));
     }
 
-    for (const toolId of Object.keys(state.items ?? {})) {
-      grouped.Tool.push({ itemType: "Tool", toolId, id: toolId, __catalog: true });
+    for (const [toolId, meta] of Object.entries(state.items ?? {})) {
+      grouped.Tool.push(makeItem("Tool", toolId, meta));
     }
 
-    for (const decorId of Object.keys(state.decors ?? {})) {
-      grouped.Decor.push({ itemType: "Decor", decorId, id: decorId, __catalog: true });
+    for (const [decorId, meta] of Object.entries(state.decors ?? {})) {
+      grouped.Decor.push(makeItem("Decor", decorId, meta));
     }
 
     for (const type of Object.keys(grouped)) {
@@ -120,17 +123,19 @@ window.MGCatalog = (() => {
       });
     }
 
-    state.groupedCache = grouped;
+    state.grouped = grouped;
   }
 
   async function getAllItemsGrouped() {
     await load();
-    if (!state.groupedCache) buildGroupedCache();
-    return state.groupedCache ?? {};
+    if (!state.grouped) buildGrouped();
+    return state.grouped;
   }
 
   function getMeta(item) {
     if (!item) return null;
+
+    if (item.__meta) return item.__meta;
 
     if (item.itemType === "Seed") {
       const species = item.species ?? item.name;
@@ -164,12 +169,12 @@ window.MGCatalog = (() => {
     const meta = getMeta(item);
     if (meta?.name) return meta.name;
 
-    if (item?.itemType === "Seed") return `${item.species ?? item.name} Seed`;
+    if (item?.itemType === "Seed") return `${item.species ?? item.id} Seed`;
     if (item?.itemType === "Egg") return item.eggId ?? item.id ?? "Egg";
     if (item?.itemType === "Tool") return item.toolId ?? item.id ?? "Tool";
     if (item?.itemType === "Decor") return item.decorId ?? item.id ?? "Decor";
 
-    return item?.id ?? item?.name ?? "unknown";
+    return item?.id ?? "unknown";
   }
 
   function getRarity(item) {
@@ -181,41 +186,22 @@ window.MGCatalog = (() => {
   }
 
   async function getSpriteDataUrl(itemOrUrl) {
-    const spriteUrl = typeof itemOrUrl === "string" ? itemOrUrl : getSprite(itemOrUrl);
-    if (!spriteUrl) return "";
+    const spriteUrl =
+      typeof itemOrUrl === "string"
+        ? itemOrUrl
+        : getSprite(itemOrUrl);
 
-    const cacheKey = SPRITE_PREFIX + spriteUrl;
+    if (!spriteUrl || !window.MGLoaderRequestDataUrl) return "";
+
+    const cacheKey = `mgAutomation.sprite.${spriteUrl}`;
     const cached = localStorage.getItem(cacheKey);
-    if (cached) return cached;
 
-    if (!window.MGLoaderRequestDataUrl) return "";
+    if (cached) return cached;
 
     const dataUrl = await window.MGLoaderRequestDataUrl(spriteUrl);
     localStorage.setItem(cacheKey, dataUrl);
 
     return dataUrl;
-  }
-
-  async function warmSpritesInBackground() {
-    const grouped = await getAllItemsGrouped();
-    const allItems = Object.values(grouped).flat();
-
-    let index = 0;
-    const concurrency = 4;
-
-    async function worker() {
-      while (index < allItems.length) {
-        const item = allItems[index++];
-        try {
-          await getSpriteDataUrl(item);
-        } catch {}
-        await new Promise(r => setTimeout(r, 30));
-      }
-    }
-
-    for (let i = 0; i < concurrency; i++) {
-      worker();
-    }
   }
 
   return {
@@ -226,7 +212,6 @@ window.MGCatalog = (() => {
     getLabel,
     getRarity,
     getSprite,
-    getSpriteDataUrl,
-    warmSpritesInBackground
+    getSpriteDataUrl
   };
 })();

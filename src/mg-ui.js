@@ -239,7 +239,8 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
     const content = document.getElementById("mg-auto-settings-content");
     if (!content || !window.MGCore) return;
 
-    content.innerHTML = "Loading items...";
+	content.innerHTML = "Loading catalog...";
+	await window.MGCatalog.load();
 
     const grouped = await window.MGCore.getAllShopItemsGrouped();
     const allTypes = window.MGCore.getKnownTypes(grouped);

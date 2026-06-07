@@ -239,7 +239,10 @@ window.MGCore = (() => {
       return null;
     },
 
-async getAllShopItemsGrouped() {
+	async getAllShopItemsGrouped() {
+		return await window.MGCatalog.getAllItemsGrouped();
+	},
+
   if (window.MGCatalog?.getAllItemsGrouped) {
     return await window.MGCatalog.getAllItemsGrouped();
   }
