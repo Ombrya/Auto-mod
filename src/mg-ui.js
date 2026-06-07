@@ -47,7 +47,21 @@ window.MGUI = (() => {
     return btn;
   }
 
-  async function loadSpriteIntoImage(img, spriteUrl) {
+async function loadSpriteIntoImage(img, itemOrUrl) {
+  if (!img) return;
+
+  try {
+    const dataUrl = await window.MGCatalog?.getSpriteDataUrl?.(itemOrUrl);
+
+    if (dataUrl) {
+      img.src = dataUrl;
+      return;
+    }
+  } catch {}
+
+  img.style.display = "none";
+}
+
     if (!img || !spriteUrl || !window.MGLoaderRequestDataUrl) {
       if (img) img.style.display = "none";
       return;
@@ -369,7 +383,7 @@ window.MGUI = (() => {
     `;
 
     const name = window.MGCore.getItemLabel(item);
-    const sprite = window.MGCatalog?.getSprite?.(item);
+    const sprite = item;
     const rarity = window.MGCatalog?.getRarity?.(item);
     const price = window.MGCatalog?.getPrice?.(item);
     const enabled = window.MGCore.isItemEnabled(item);

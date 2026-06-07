@@ -16,6 +16,9 @@ window.MGAutomationBootstrap = (() => {
 
     try {
       await window.MGCatalog.load();
+
+      // Non bloquant : les sprites se chargent tranquillement en arrière-plan.
+      window.MGCatalog.warmSpritesInBackground?.();
     } catch (err) {
       console.warn("[MG Automation] Catalog load failed", err);
     }

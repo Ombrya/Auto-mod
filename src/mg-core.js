@@ -239,7 +239,50 @@ window.MGCore = (() => {
       return null;
     },
 
-    async getAllShopItemsGrouped() {
+async getAllShopItemsGrouped() {
+  if (window.MGCatalog?.getAllItemsGrouped) {
+    return await window.MGCatalog.getAllItemsGrouped();
+  }
+
+  const shops = await QWS_Atoms.shop.shops.get();
+
+  const grouped = {};
+  const seen = new Set();
+
+  for (const [shopKey, shop] of Object.entries(shops ?? {})) {
+    for (const item of shop?.inventory ?? []) {
+      const type = this.getItemType(item);
+      const id = this.getItemId(item);
+
+      if (!type || !id) continue;
+
+      const key = `${type}:${id}`;
+
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      if (!grouped[type]) grouped[type] = [];
+
+      grouped[type].push({
+        ...item,
+        __shopKey: shopKey
+      });
+    }
+  }
+
+  for (const type of Object.keys(grouped)) {
+    grouped[type].sort((a, b) => {
+      const pa = window.MGCatalog?.getPrice?.(a) ?? 0;
+      const pb = window.MGCatalog?.getPrice?.(b) ?? 0;
+
+      if (pa !== pb) return pa - pb;
+
+      return this.getItemLabel(a).localeCompare(this.getItemLabel(b));
+    });
+  }
+
+  return grouped;
+},
       const shops = await QWS_Atoms.shop.shops.get();
 
       const grouped = {};
