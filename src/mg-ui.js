@@ -47,21 +47,16 @@ window.MGUI = (() => {
     return btn;
   }
 
-  Object.keys(localStorage)
-  .filter(k => k.startsWith("mgAutomation.sprite"))
-  .length
-    if (!img) return;
+  function loadSpriteIntoImage(img, item) {
+	if (!img) return;
 
-    try {
-      const dataUrl = await window.MGCatalog?.getSpriteDataUrl?.(item);
+    const sprite = window.MGCatalog?.getSprite?.(item);
 
-      if (dataUrl) {
-        img.src = dataUrl;
-        return;
-      }
-    } catch {}
-
-    img.style.display = "none";
+    if (!sprite) {
+      img.style.display = "none";
+      return;
+    }
+    img.src = sprite;
   }
 
   function createPanel() {
