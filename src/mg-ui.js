@@ -47,7 +47,9 @@ window.MGUI = (() => {
     return btn;
   }
 
-  async function loadSpriteIntoImage(img, item) {
+  Object.keys(localStorage)
+  .filter(k => k.startsWith("mgAutomation.sprite"))
+  .length
     if (!img) return;
 
     try {

@@ -345,7 +345,6 @@ window.MGCatalog = (() => {
     return getMeta(item)?.sprite ?? "";
   }
 
-  async function getSpriteDataUrl(itemOrUrl) {
     const spriteUrl =
       typeof itemOrUrl === "string"
         ? itemOrUrl
