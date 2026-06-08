@@ -125,28 +125,53 @@ window.MGCatalog = (() => {
     return {};
   }
 
-  function buildEntries() {
-    const entries = [];
-
-    for (const [collectionName, config] of Object.entries(COLLECTIONS)) {
-      const data = getRawCollection(collectionName, config);
-      const items = config.getItems
-        ? config.getItems(data)
-        : Object.entries(data ?? {}).map(([id, meta]) => ({ id, meta }));
-
-      for (const item of items) {
-        const type = inferType(collectionName, item.meta, config.type);
-        entries.push(makeEntry(type, item.id, item.meta, {
-          source: collectionName,
-          idField: config.idField
-        }));
-      }
-    }
-
-    return dedupeEntries(entries)
-      .filter(isUsefulEntry);
+  function isShopEligible(meta) {
+    return (
+      Array.isArray(meta?.eligibleShops) &&
+      meta.eligibleShops.length > 0
+    );
   }
 
+  function buildEntries() {
+  const entries = [];
+
+  for (const [collectionName, config] of Object.entries(COLLECTIONS)) {
+    const data = getRawCollection(collectionName, config);
+
+    let items;
+
+    if (collectionName === "plants") {
+      items = Object.entries(data ?? {})
+        .map(([id, value]) => ({
+          id,
+          meta: value?.seed
+        }))
+        .filter(item => isShopEligible(item.meta));
+    } else {
+      items = Object.entries(data ?? {})
+        .map(([id, meta]) => ({ id, meta }))
+        .filter(item => isShopEligible(item.meta));
+    }
+
+    for (const item of items) {
+      const type = inferType(
+        collectionName,
+        item.meta,
+        config.type
+      );
+
+      entries.push(
+        makeEntry(type, item.id, item.meta, {
+          source: collectionName,
+          idField: config.idField
+        })
+      );
+    }
+  }
+
+  return dedupeEntries(entries);
+}
+  
   function inferType(collectionName, meta, fallbackType) {
     const apiTypes = state.enums?.itemType ?? [];
 
@@ -217,7 +242,7 @@ window.MGCatalog = (() => {
     if (!getEntryId(entry)) return false;
 
     const meta = getMeta(entry);
-    if (meta?.purchasable === false) return false;
+    if (!isShopEligible(meta)) return false;
 
     return true;
   }
