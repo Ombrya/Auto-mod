@@ -1,16 +1,56 @@
 window.MGCatalog = (() => {
-  const API_BASE = "https://mg-api.ariedam.fr/data";
-  const LS_KEY = "mgAutomation.catalog.cache";
+  const API_BASE = "https://mg-api.ariedam.fr";
+  const DATA_URL = `${API_BASE}/data`;
+  const ENUMS_URL = `${API_BASE}/data/enums`;
+
+  const LS_DATA = "mgAutomation.catalog.data";
+  const LS_ENUMS = "mgAutomation.catalog.enums";
   const LS_TS = "mgAutomation.catalog.cacheTs";
+  const SPRITE_PREFIX = "mgAutomation.sprite.";
   const CACHE_MS = 12 * 60 * 60 * 1000;
 
   const state = {
     loaded: false,
-    grouped: null,
-    plants: {},
-    eggs: {},
-    items: {},
-    decors: {}
+    raw: {},
+    enums: {},
+    entries: [],
+    grouped: {}
+  };
+
+  const COLLECTIONS = {
+    plants: {
+      type: "Seed",
+      idField: "species",
+      getItems(data) {
+        return Object.entries(data ?? {})
+          .filter(([, value]) => value?.seed)
+          .map(([id, value]) => ({
+            id,
+            meta: value.seed
+          }));
+      }
+    },
+
+    eggs: {
+      type: "Egg",
+      idField: "eggId"
+    },
+
+    items: {
+      type: "Tool",
+      idField: "toolId"
+    },
+
+    decor: {
+      type: "Decor",
+      idField: "decorId",
+      aliases: ["decors"]
+    },
+
+    pets: {
+      type: "Pet",
+      idField: "petId"
+    }
   };
 
   async function fetchJson(url) {
@@ -28,88 +68,167 @@ window.MGCatalog = (() => {
     if (state.loaded && !force) return state;
 
     const now = Date.now();
-    const cached = localStorage.getItem(LS_KEY);
+    const cachedData = localStorage.getItem(LS_DATA);
+    const cachedEnums = localStorage.getItem(LS_ENUMS);
     const cachedTs = Number(localStorage.getItem(LS_TS) || 0);
 
-    if (!force && cached && now - cachedTs < CACHE_MS) {
+    if (!force && cachedData && now - cachedTs < CACHE_MS) {
       try {
-        const parsed = JSON.parse(cached);
-        Object.assign(state, parsed, { loaded: true });
-        buildGrouped();
-        console.log("[MG Catalog] Loaded from cache");
+        applyData(JSON.parse(cachedData), cachedEnums ? JSON.parse(cachedEnums) : {});
         return state;
       } catch {}
     }
 
-    const [plants, eggs, items, decors] = await Promise.all([
-      fetchJson(`${API_BASE}/plants`),
-      fetchJson(`${API_BASE}/eggs`),
-      fetchJson(`${API_BASE}/items`),
-      fetchJson(`${API_BASE}/decors`)
-    ]);
+    try {
+      const [data, enums] = await Promise.all([
+        fetchJson(DATA_URL),
+        fetchJson(ENUMS_URL).catch(() => ({}))
+      ]);
 
-    Object.assign(state, {
-      loaded: true,
-      plants: plants ?? {},
-      eggs: eggs ?? {},
-      items: items ?? {},
-      decors: decors ?? {}
-    });
+      localStorage.setItem(LS_DATA, JSON.stringify(data));
+      localStorage.setItem(LS_ENUMS, JSON.stringify(enums));
+      localStorage.setItem(LS_TS, String(now));
 
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      plants: state.plants,
-      eggs: state.eggs,
-      items: state.items,
-      decors: state.decors
-    }));
+      applyData(data, enums);
+    } catch (err) {
+      if (cachedData) {
+        try {
+          applyData(JSON.parse(cachedData), cachedEnums ? JSON.parse(cachedEnums) : {});
+          console.warn("[MG Catalog] API failed, using cached data", err);
+          return state;
+        } catch {}
+      }
 
-    localStorage.setItem(LS_TS, String(now));
+      console.error("[MG Catalog] Failed to load catalog", err);
+      throw err;
+    }
 
-    buildGrouped();
-
-    console.log("[MG Catalog] Loaded from API");
     return state;
   }
 
-  function makeItem(type, id, meta) {
-    const item = {
+  function applyData(data, enums) {
+    state.raw = data ?? {};
+    state.enums = enums ?? state.raw.enums ?? {};
+    state.entries = buildEntries();
+    state.grouped = groupEntries(state.entries);
+    state.loaded = true;
+  }
+
+  function getRawCollection(name, config = {}) {
+    const direct = state.raw?.[name];
+    if (direct) return direct;
+
+    for (const alias of config.aliases ?? []) {
+      if (state.raw?.[alias]) return state.raw[alias];
+    }
+
+    return {};
+  }
+
+  function buildEntries() {
+    const entries = [];
+
+    for (const [collectionName, config] of Object.entries(COLLECTIONS)) {
+      const data = getRawCollection(collectionName, config);
+      const items = config.getItems
+        ? config.getItems(data)
+        : Object.entries(data ?? {}).map(([id, meta]) => ({ id, meta }));
+
+      for (const item of items) {
+        const type = inferType(collectionName, item.meta, config.type);
+        entries.push(makeEntry(type, item.id, item.meta, {
+          source: collectionName,
+          idField: config.idField
+        }));
+      }
+    }
+
+    return dedupeEntries(entries)
+      .filter(isUsefulEntry);
+  }
+
+  function inferType(collectionName, meta, fallbackType) {
+    const apiTypes = state.enums?.itemType ?? [];
+
+    if (meta?.itemType && (!apiTypes.length || apiTypes.includes(meta.itemType))) {
+      return meta.itemType;
+    }
+
+    if (meta?.type && (!apiTypes.length || apiTypes.includes(meta.type))) {
+      return meta.type;
+    }
+
+    return fallbackType || collectionName;
+  }
+
+  function makeEntry(type, id, meta, options = {}) {
+    const entry = {
       itemType: type,
       id,
       __catalog: true,
+      __source: options.source ?? null,
       __meta: meta ?? {}
     };
 
-    if (type === "Seed") item.species = id;
-    if (type === "Egg") item.eggId = id;
-    if (type === "Tool") item.toolId = id;
-    if (type === "Decor") item.decorId = id;
+    const idField = options.idField || getIdFieldForType(type);
+    if (idField) entry[idField] = id;
 
-    return item;
+    return entry;
   }
 
-  function buildGrouped() {
-    const grouped = {
-      Seed: [],
-      Egg: [],
-      Tool: [],
-      Decor: []
+  function getIdFieldForType(type) {
+    const map = {
+      Seed: "species",
+      Egg: "eggId",
+      Tool: "toolId",
+      Decor: "decorId",
+      Pet: "petId"
     };
 
-    for (const [species, data] of Object.entries(state.plants ?? {})) {
-      if (!data?.seed) continue;
-      grouped.Seed.push(makeItem("Seed", species, data.seed));
+    return map[type] ?? "id";
+  }
+
+  function dedupeEntries(entries) {
+    const byKey = new Map();
+
+    for (const entry of entries) {
+      const key = getItemKey(entry);
+
+      if (!byKey.has(key)) {
+        byKey.set(key, entry);
+        continue;
+      }
+
+      const existing = byKey.get(key);
+      byKey.set(key, {
+        ...existing,
+        __meta: {
+          ...entry.__meta,
+          ...existing.__meta
+        }
+      });
     }
 
-    for (const [eggId, meta] of Object.entries(state.eggs ?? {})) {
-      grouped.Egg.push(makeItem("Egg", eggId, meta));
-    }
+    return Array.from(byKey.values());
+  }
 
-    for (const [toolId, meta] of Object.entries(state.items ?? {})) {
-      grouped.Tool.push(makeItem("Tool", toolId, meta));
-    }
+  function isUsefulEntry(entry) {
+    if (!entry?.itemType) return false;
+    if (!getEntryId(entry)) return false;
 
-    for (const [decorId, meta] of Object.entries(state.decors ?? {})) {
-      grouped.Decor.push(makeItem("Decor", decorId, meta));
+    const meta = getMeta(entry);
+    if (meta?.purchasable === false) return false;
+
+    return true;
+  }
+
+  function groupEntries(entries) {
+    const grouped = {};
+
+    for (const entry of entries) {
+      const type = entry.itemType || "Unknown";
+      if (!grouped[type]) grouped[type] = [];
+      grouped[type].push(entry);
     }
 
     for (const type of Object.keys(grouped)) {
@@ -123,58 +242,99 @@ window.MGCatalog = (() => {
       });
     }
 
-    state.grouped = grouped;
+    return grouped;
   }
 
   async function getAllItemsGrouped() {
     await load();
-    if (!state.grouped) buildGrouped();
     return state.grouped;
+  }
+
+  function getAllEntries() {
+    return state.entries;
+  }
+
+  function getRaw() {
+    return state.raw;
+  }
+
+  function getEnums() {
+    return state.enums;
+  }
+
+  function getCollection(name) {
+    return getRawCollection(name, COLLECTIONS[name] ?? {});
   }
 
   function getMeta(item) {
     if (!item) return null;
-
     if (item.__meta) return item.__meta;
 
-    if (item.itemType === "Seed") {
-      const species = item.species ?? item.name;
-      return state.plants?.[species]?.seed ?? null;
+    const type = item.itemType;
+    const id = getEntryId(item);
+
+    const collectionName = getCollectionNameForType(type);
+    if (!collectionName) return null;
+
+    if (type === "Seed") {
+      return getCollection("plants")?.[id]?.seed ?? null;
     }
 
-    if (item.itemType === "Egg") {
-      const eggId = item.eggId ?? item.id;
-      return state.eggs?.[eggId] ?? null;
-    }
+    return getCollection(collectionName)?.[id] ?? null;
+  }
 
-    if (item.itemType === "Tool") {
-      const toolId = item.toolId ?? item.id;
-      return state.items?.[toolId] ?? null;
-    }
+  function getCollectionNameForType(type) {
+    const map = {
+      Seed: "plants",
+      Egg: "eggs",
+      Tool: "items",
+      Decor: "decor",
+      Pet: "pets"
+    };
 
-    if (item.itemType === "Decor") {
-      const decorId = item.decorId ?? item.id;
-      return state.decors?.[decorId] ?? null;
-    }
+    return map[type] ?? null;
+  }
 
-    return null;
+  function getEntryId(item) {
+    if (!item) return "";
+
+    return (
+      item.species ??
+      item.eggId ??
+      item.toolId ??
+      item.decorId ??
+      item.petId ??
+      item.id ??
+      item.name ??
+      ""
+    );
+  }
+
+  function getItemKey(item) {
+    return `${item?.itemType ?? "Unknown"}:${getEntryId(item)}`;
   }
 
   function getPrice(item) {
     const meta = getMeta(item);
-    return Number(meta?.coinPrice ?? meta?.price ?? 0);
+
+    return Number(
+      meta?.coinPrice ??
+      meta?.price ??
+      meta?.cost ??
+      0
+    );
   }
 
   function getLabel(item) {
     const meta = getMeta(item);
     if (meta?.name) return meta.name;
 
-    if (item?.itemType === "Seed") return `${item.species ?? item.id} Seed`;
-    if (item?.itemType === "Egg") return item.eggId ?? item.id ?? "Egg";
-    if (item?.itemType === "Tool") return item.toolId ?? item.id ?? "Tool";
-    if (item?.itemType === "Decor") return item.decorId ?? item.id ?? "Decor";
+    const id = getEntryId(item);
 
-    return item?.id ?? "unknown";
+    if (item?.itemType === "Seed") return `${id} Seed`;
+    if (item?.itemType === "Egg") return `${id} Egg`;
+
+    return id || "unknown";
   }
 
   function getRarity(item) {
@@ -193,7 +353,7 @@ window.MGCatalog = (() => {
 
     if (!spriteUrl || !window.MGLoaderRequestDataUrl) return "";
 
-    const cacheKey = `mgAutomation.sprite.${spriteUrl}`;
+    const cacheKey = SPRITE_PREFIX + spriteUrl;
     const cached = localStorage.getItem(cacheKey);
 
     if (cached) return cached;
@@ -204,14 +364,47 @@ window.MGCatalog = (() => {
     return dataUrl;
   }
 
+  function findCatalogEntryForLiveItem(liveItem) {
+    const key = getItemKey(liveItem);
+    return state.entries.find(entry => getItemKey(entry) === key) ?? null;
+  }
+
+  function clearCache() {
+    localStorage.removeItem(LS_DATA);
+    localStorage.removeItem(LS_ENUMS);
+    localStorage.removeItem(LS_TS);
+
+    state.loaded = false;
+    state.raw = {};
+    state.enums = {};
+    state.entries = [];
+    state.grouped = {};
+  }
+
   return {
     load,
+    clearCache,
+
+    getRaw,
+    getEnums,
+    getCollection,
+    getAllEntries,
     getAllItemsGrouped,
+
     getMeta,
     getPrice,
     getLabel,
     getRarity,
     getSprite,
-    getSpriteDataUrl
+    getSpriteDataUrl,
+
+    getEntryId,
+    getItemKey,
+    findCatalogEntryForLiveItem,
+
+    get raw() { return state.raw; },
+    get enums() { return state.enums; },
+    get entries() { return state.entries; },
+    get grouped() { return state.grouped; }
   };
 })();
