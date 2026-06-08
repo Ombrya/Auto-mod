@@ -377,7 +377,6 @@ window.MGCatalog = (() => {
     getLabel,
     getRarity,
     getSprite,
-    getSpriteDataUrl,
 
     getEntryId,
     getItemKey,
