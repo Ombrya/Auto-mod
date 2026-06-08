@@ -2,6 +2,8 @@ window.MGUI = (() => {
   const LS_SETTINGS_OPEN = "mgAutomation.settingsOpen";
   const LS_COLLAPSED_TYPES = "mgAutomation.collapsedTypes";
 
+  const spriteMemoryCache = new Map();
+
   function readJson(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
@@ -47,18 +49,30 @@ window.MGUI = (() => {
     return btn;
   }
 
-  function loadSpriteIntoImage(img, item) {
-	if (!img) return;
+  async function loadSpriteIntoImage(img, item) {
+  if (!img) return;
 
-    const sprite = window.MGCatalog?.getSprite?.(item);
+  const spriteUrl = window.MGCatalog?.getSprite?.(item);
 
-    if (!sprite) {
-      img.style.display = "none";
-      return;
-    }
-    img.src = sprite;
+  if (!spriteUrl || !window.MGLoaderRequestDataUrl) {
+    img.style.display = "none";
+    return;
   }
 
+  if (spriteMemoryCache.has(spriteUrl)) {
+    img.src = spriteMemoryCache.get(spriteUrl);
+    return;
+  }
+
+  try {
+    const dataUrl = await window.MGLoaderRequestDataUrl(spriteUrl);
+    spriteMemoryCache.set(spriteUrl, dataUrl);
+    img.src = dataUrl;
+  } catch {
+    img.style.display = "none";
+  }
+  }
+  
   function createPanel() {
     if (document.getElementById("mg-auto-panel")) return;
 
