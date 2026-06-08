@@ -47,41 +47,19 @@ window.MGUI = (() => {
     return btn;
   }
 
-async function loadSpriteIntoImage(img, itemOrUrl) {
-  if (!img) return;
-
-  try {
-    const dataUrl = await window.MGCatalog?.getSpriteDataUrl?.(itemOrUrl);
-
-    if (dataUrl) {
-      img.src = dataUrl;
-      return;
-    }
-  } catch {}
-
-  img.style.display = "none";
-}
-
-    if (!img || !spriteUrl || !window.MGLoaderRequestDataUrl) {
-      if (img) img.style.display = "none";
-      return;
-    }
-
-    const cacheKey = `mgAutomation.sprite.${spriteUrl}`;
-    const cached = localStorage.getItem(cacheKey);
-
-    if (cached) {
-      img.src = cached;
-      return;
-    }
+  async function loadSpriteIntoImage(img, item) {
+    if (!img) return;
 
     try {
-      const dataUrl = await window.MGLoaderRequestDataUrl(spriteUrl);
-      localStorage.setItem(cacheKey, dataUrl);
-      img.src = dataUrl;
-    } catch {
-      img.style.display = "none";
-    }
+      const dataUrl = await window.MGCatalog?.getSpriteDataUrl?.(item);
+
+      if (dataUrl) {
+        img.src = dataUrl;
+        return;
+      }
+    } catch {}
+
+    img.style.display = "none";
   }
 
   function createPanel() {
@@ -153,7 +131,7 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
     updatePanel();
 
     if (localStorage.getItem(LS_SETTINGS_OPEN) === "true") {
-      openSettingsWindow();
+      void openSettingsWindow();
     }
   }
 
@@ -237,12 +215,13 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
     renderGlobalSettings();
 
     const content = document.getElementById("mg-auto-settings-content");
-    if (!content || !window.MGCore) return;
+    if (!content || !window.MGCore || !window.MGCatalog) return;
 
-	content.innerHTML = "Loading catalog...";
-	await window.MGCatalog.load();
+    content.innerHTML = "Loading catalog...";
 
-    const grouped = await window.MGCore.getAllShopItemsGrouped();
+    await window.MGCatalog.load();
+
+    const grouped = await window.MGCore.getConfigItemsGrouped();
     const allTypes = window.MGCore.getKnownTypes(grouped);
     const collapsed = readJson(LS_COLLAPSED_TYPES, {});
 
@@ -311,7 +290,7 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
       const typeSwitch = makeSwitch(typeEnabled);
       typeSwitch.title = typeEnabled
         ? `Disable automatic purchase for all ${type}`
-        : `Enable automatic purchase for all visible ${type}`;
+        : `Enable automatic purchase for all ${type}`;
 
       typeSwitch.onclick = () => {
         window.MGCore.setTypeEnabled(type, !window.MGCore.isTypeEnabled(type), items);
@@ -323,7 +302,7 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
       if (!isCollapsed) {
         if (!items.length) {
           const empty = document.createElement("div");
-          empty.textContent = "No visible item in current shops.";
+          empty.textContent = "No configurable item.";
           empty.style.cssText = "opacity:.55;padding:8px;";
           section.appendChild(empty);
         }
@@ -384,7 +363,6 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
     `;
 
     const name = window.MGCore.getItemLabel(item);
-    const sprite = item;
     const rarity = window.MGCatalog?.getRarity?.(item);
     const price = window.MGCatalog?.getPrice?.(item);
     const enabled = window.MGCore.isItemEnabled(item);
@@ -401,7 +379,7 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
       background:rgba(255,255,255,.08);
       flex:0 0 auto;
     `;
-    loadSpriteIntoImage(img, sprite);
+    loadSpriteIntoImage(img, item);
 
     const nameWrap = document.createElement("div");
     nameWrap.style.cssText = "min-width:0;";
@@ -442,21 +420,21 @@ async function loadSpriteIntoImage(img, itemOrUrl) {
     let offsetX = 0;
     let offsetY = 0;
 
-    handle.addEventListener("mousedown", (e) => {
-      if (e.target.tagName === "BUTTON") return;
+    handle.addEventListener("mousedown", (event) => {
+      if (event.target.tagName === "BUTTON") return;
 
       dragging = true;
       const rect = panel.getBoundingClientRect();
 
-      offsetX = e.clientX - rect.left;
-      offsetY = e.clientY - rect.top;
+      offsetX = event.clientX - rect.left;
+      offsetY = event.clientY - rect.top;
     });
 
-    document.addEventListener("mousemove", (e) => {
+    document.addEventListener("mousemove", (event) => {
       if (!dragging) return;
 
-      panel.style.left = `${e.clientX - offsetX}px`;
-      panel.style.top = `${e.clientY - offsetY}px`;
+      panel.style.left = `${event.clientX - offsetX}px`;
+      panel.style.top = `${event.clientY - offsetY}px`;
       panel.style.right = "auto";
     });
 
