@@ -345,24 +345,6 @@ window.MGCatalog = (() => {
     return getMeta(item)?.sprite ?? "";
   }
 
-    const spriteUrl =
-      typeof itemOrUrl === "string"
-        ? itemOrUrl
-        : getSprite(itemOrUrl);
-
-    if (!spriteUrl || !window.MGLoaderRequestDataUrl) return "";
-
-    const cacheKey = SPRITE_PREFIX + spriteUrl;
-    const cached = localStorage.getItem(cacheKey);
-
-    if (cached) return cached;
-
-    const dataUrl = await window.MGLoaderRequestDataUrl(spriteUrl);
-    localStorage.setItem(cacheKey, dataUrl);
-
-    return dataUrl;
-  }
-
   function findCatalogEntryForLiveItem(liveItem) {
     const key = getItemKey(liveItem);
     return state.entries.find(entry => getItemKey(entry) === key) ?? null;
