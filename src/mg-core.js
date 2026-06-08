@@ -4,8 +4,6 @@ window.MGCore = (() => {
   const LS_TYPE_ENABLED = "mgAutomation.typeEnabled";
   const LS_ITEM_ENABLED = "mgAutomation.itemEnabled";
 
-  const KNOWN_TYPES = ["Seed", "Egg", "Tool", "Decor"];
-
   function readJson(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
@@ -32,8 +30,6 @@ window.MGCore = (() => {
     restockDelayMinMs: 10000,
     restockDelayMaxMs: 15000,
 
-    // Type ON = default ON for this type.
-    // Individual items can still override this.
     typeEnabled: {
       Seed: true,
       Egg: true,
@@ -42,8 +38,6 @@ window.MGCore = (() => {
       ...readJson(LS_TYPE_ENABLED, {})
     },
 
-    // Item-specific rules.
-    // Example: "Seed:Carrot": true / false
     itemEnabled: readJson(LS_ITEM_ENABLED, {}),
 
     setStatus(text) {
@@ -77,14 +71,27 @@ window.MGCore = (() => {
     },
 
     getItemId(item) {
-      if (item?.itemType === "Seed") return item.species ?? item.name ?? "";
-      if (item?.itemType === "Egg") return item.eggId ?? item.id ?? "";
-      if (item?.itemType === "Tool") return item.toolId ?? item.id ?? "";
-      if (item?.itemType === "Decor") return item.decorId ?? item.id ?? "";
-      return item?.id ?? item?.species ?? item?.name ?? "";
+      if (window.MGCatalog?.getEntryId) {
+        return window.MGCatalog.getEntryId(item);
+      }
+
+      return (
+        item?.species ??
+        item?.eggId ??
+        item?.toolId ??
+        item?.decorId ??
+        item?.petId ??
+        item?.id ??
+        item?.name ??
+        ""
+      );
     },
 
     getItemKey(item) {
+      if (window.MGCatalog?.getItemKey) {
+        return window.MGCatalog.getItemKey(item);
+      }
+
       return `${this.getItemType(item)}:${this.getItemId(item)}`;
     },
 
@@ -92,22 +99,23 @@ window.MGCore = (() => {
       return window.MGCatalog?.getLabel?.(item) ?? this.getItemId(item) ?? "unknown";
     },
 
-    getKnownTypes(extraGrouped = {}) {
-      return Array.from(new Set([...KNOWN_TYPES, ...Object.keys(extraGrouped)]));
+    async getConfigItemsGrouped() {
+      return await window.MGCatalog.getAllItemsGrouped();
+    },
+
+    // Temporary alias for the current UI. Prefer getConfigItemsGrouped().
+    async getAllShopItemsGrouped() {
+      return await this.getConfigItemsGrouped();
+    },
+
+    getKnownTypes(grouped = {}) {
+      const enumTypes = window.MGCatalog?.getEnums?.()?.itemType ?? [];
+      return Array.from(new Set([...enumTypes, ...Object.keys(grouped)]))
+        .filter(type => grouped[type]?.length || this.typeEnabled[type] !== undefined);
     },
 
     isTypeEnabled(type) {
       return this.typeEnabled[type] === true;
-    },
-
-    isItemExplicitlyEnabled(item) {
-      const key = this.getItemKey(item);
-      return this.itemEnabled[key] === true;
-    },
-
-    isItemExplicitlyDisabled(item) {
-      const key = this.getItemKey(item);
-      return this.itemEnabled[key] === false;
     },
 
     isItemEnabled(item) {
@@ -123,13 +131,11 @@ window.MGCore = (() => {
 
     setTypeEnabled(type, enabled, items = []) {
       const next = !!enabled;
-
       this.typeEnabled[type] = next;
 
       for (const item of items) {
         if (this.getItemType(item) !== type) continue;
-        const key = this.getItemKey(item);
-        this.itemEnabled[key] = next;
+        this.itemEnabled[this.getItemKey(item)] = next;
       }
 
       this.saveSettings();
@@ -142,11 +148,9 @@ window.MGCore = (() => {
 
       this.itemEnabled[key] = !!enabled;
 
-      // If one item is turned OFF, the category is no longer globally ON.
       if (!enabled) {
         this.typeEnabled[type] = false;
       } else if (allItemsOfType.length) {
-        // If all currently visible items of this type are ON, promote category to ON.
         const allOn = allItemsOfType.every(x => {
           const itemKey = this.getItemKey(x);
 
@@ -200,135 +204,29 @@ window.MGCore = (() => {
 
     itemPayload(item) {
       if (item?.itemType === "Seed" && item?.species) {
-        return {
-          itemType: "Seed",
-          species: item.species
-        };
+        return { itemType: "Seed", species: item.species };
       }
 
       if (item?.itemType === "Egg") {
         const eggId = item.eggId ?? item.id;
-        if (eggId) {
-          return {
-            itemType: "Egg",
-            eggId
-          };
-        }
+        if (eggId) return { itemType: "Egg", eggId };
       }
 
       if (item?.itemType === "Tool") {
         const toolId = item.toolId ?? item.id;
-        if (toolId) {
-          return {
-            itemType: "Tool",
-            toolId
-          };
-        }
+        if (toolId) return { itemType: "Tool", toolId };
       }
 
       if (item?.itemType === "Decor") {
         const decorId = item.decorId ?? item.id;
-        if (decorId) {
-          return {
-            itemType: "Decor",
-            decorId
-          };
-        }
+        if (decorId) return { itemType: "Decor", decorId };
       }
 
       return null;
     },
 
-	async getAllShopItemsGrouped() {
-		return await window.MGCatalog.getAllItemsGrouped();
-	},
-
-  if (window.MGCatalog?.getAllItemsGrouped) {
-    return await window.MGCatalog.getAllItemsGrouped();
-  }
-
-  const shops = await QWS_Atoms.shop.shops.get();
-
-  const grouped = {};
-  const seen = new Set();
-
-  for (const [shopKey, shop] of Object.entries(shops ?? {})) {
-    for (const item of shop?.inventory ?? []) {
-      const type = this.getItemType(item);
-      const id = this.getItemId(item);
-
-      if (!type || !id) continue;
-
-      const key = `${type}:${id}`;
-
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      if (!grouped[type]) grouped[type] = [];
-
-      grouped[type].push({
-        ...item,
-        __shopKey: shopKey
-      });
-    }
-  }
-
-  for (const type of Object.keys(grouped)) {
-    grouped[type].sort((a, b) => {
-      const pa = window.MGCatalog?.getPrice?.(a) ?? 0;
-      const pb = window.MGCatalog?.getPrice?.(b) ?? 0;
-
-      if (pa !== pb) return pa - pb;
-
-      return this.getItemLabel(a).localeCompare(this.getItemLabel(b));
-    });
-  }
-
-  return grouped;
-},
-      const shops = await QWS_Atoms.shop.shops.get();
-
-      const grouped = {};
-      const seen = new Set();
-
-      for (const [shopKey, shop] of Object.entries(shops ?? {})) {
-        for (const item of shop?.inventory ?? []) {
-          const type = this.getItemType(item);
-          const id = this.getItemId(item);
-
-          if (!type || !id) continue;
-
-          const key = `${type}:${id}`;
-
-          if (seen.has(key)) continue;
-          seen.add(key);
-
-          if (!grouped[type]) grouped[type] = [];
-
-          grouped[type].push({
-            ...item,
-            __shopKey: shopKey
-          });
-        }
-      }
-
-      for (const type of Object.keys(grouped)) {
-        grouped[type].sort((a, b) => {
-          const pa = window.MGCatalog?.getPrice?.(a) ?? 0;
-          const pb = window.MGCatalog?.getPrice?.(b) ?? 0;
-
-          if (pa !== pb) return pa - pb;
-
-          return this.getItemLabel(a).localeCompare(this.getItemLabel(b));
-        });
-      }
-
-      return grouped;
-    },
-
     async autoStoreOneSeedIfPossible(species) {
-      if (!this.autoSiloEnabled) return;
-      if (!species) return;
+      if (!this.autoSiloEnabled || !species) return;
 
       const siloItems = await QWS_Atoms.inventory.mySeedSiloItems.get();
 
@@ -344,7 +242,6 @@ window.MGCore = (() => {
       }
 
       this.setStatus(`Silo: ${species}`);
-
       this.storeSeedInSilo(species);
 
       await MGUtils.sleep(this.delayMs);
@@ -356,10 +253,7 @@ window.MGCore = (() => {
 
       for (const item of items) {
         if (!this.enabled && label !== "manual") break;
-
-        if (!this.isItemEnabled(item)) {
-          continue;
-        }
+        if (!this.isItemEnabled(item)) continue;
 
         const stock = this.getStock(item);
         if (stock <= 0) continue;
@@ -396,9 +290,8 @@ window.MGCore = (() => {
         this.setStatus(manual ? "Manual run..." : "Buying stock...");
 
         const shops = await QWS_Atoms.shop.shops.get();
-        const shopKeys = Object.keys(shops ?? {});
 
-        for (const shopKey of shopKeys) {
+        for (const shopKey of Object.keys(shops ?? {})) {
           await this.buyShopInventory(shopKey, manual ? "manual" : shopKey);
         }
 
@@ -412,7 +305,6 @@ window.MGCore = (() => {
       if (!this.enabled) return;
 
       const prev = this.prev;
-
       const seedRestocked =
         prev &&
         (prev.seed?.secondsUntilRestock ?? 0) <
@@ -423,11 +315,9 @@ window.MGCore = (() => {
       if (!seedRestocked) return;
 
       const delay = this.randomRestockDelay();
-
       this.setStatus(`Restock detected, waiting ${Math.round(delay / 1000)}s`);
 
       await MGUtils.sleep(delay);
-
       await this.buyAllAvailable(false);
     },
 
@@ -442,14 +332,11 @@ window.MGCore = (() => {
 
       this.listening = true;
       this.enabled = true;
-
       this.saveEnabled();
 
       window.MGUI?.updatePanel?.();
 
       this.setStatus("ON, buying current stock");
-
-      // New behavior: starting a session immediately buys currently available ON items.
       await this.buyAllAvailable(false);
 
       this.setStatus("ON, waiting restock");
@@ -457,23 +344,18 @@ window.MGCore = (() => {
 
     stop() {
       this.enabled = false;
-
       this.saveEnabled();
 
-      try {
-        this.unsub?.();
-      } catch {}
+      try { this.unsub?.(); } catch {}
 
       this.unsub = null;
       this.listening = false;
 
       window.MGUI?.updatePanel?.();
-
       this.setStatus("OFF");
     }
   };
 
   window.MG_AUTO_BUY = core;
-
   return core;
 })();
